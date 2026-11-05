@@ -1,0 +1,8 @@
+{
+  "name": "MOTO PARTES · Gestor de Cuentas",
+  "description": "Sistema de gestión y cuadre de cuentas bancarias diseñado para MIPYMEs",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

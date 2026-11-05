@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOTO PARTES · Gestor de Cuentas</title>
+<meta name="description" content="Sistema de gestión y cuadre de cuentas bancarias diseñado para MIPYMEs">
+<meta property="og:title" content="MOTO PARTES · Gestor de Cuentas">
+<meta property="og:description" content="Sistema de gestión y cuadre de cuentas bancarias diseñado para MIPYMEs">
+<meta property="og:type" content="website">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4f46e5">
+
+<!-- Librerías locales (modo offline) -->
+<script src="libs/tailwind.js"></script>
+<script src="libs/chart.js"></script>
+<script src="libs/xlsx.js"></script>
+<script src="libs/jspdf.js"></script>
+<script src="libs/jspdf_autotable.js"></script>
+<script src="libs/sql-wasm.js"></script>
+
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui'] } } }
+  }
+</script>
+
+<style>
+  :root {
+    --bg: #f7f8fa; --surface: #ffffff; --surface-2: #f1f3f7;
+    --border: #e5e7eb; --text: #0f172a; --text-muted: #64748b;
+    --primary: #4f46e5; --primary-hover: #4338ca; --primary-soft: #eef2ff;
+    --success: #10b981; --success-soft: #d1fae5;
+    --danger: #ef4444; --danger-soft: #fee2e2;
+    --warning: #f59e0b; --warning-soft: #fef3c7;
+    --info: #0ea5e9; --info-soft: #e0f2fe;
+  }
+  .dark {
+    --bg: #0f172a; --surface: #1e293b; --surface-2: #334155;
+    --border: #334155; --text: #f8fafc; --text-muted: #94a3b8;
+    --primary: #6366f1; --primary-hover: #818cf8; --primary-soft: #1e1b4b;
+    --success-soft: #064e3b; --danger-soft: #450a0a;
+    --warning-soft: #451a03; --info-soft: #0c4a6e;
+  }
+  * { font-family: 'Inter', system-ui, sans-serif; transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
+  body { background: var(--bg); color: var(--text); }
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); }
+  .nav-item { transition: all .15s ease; color: var(--text-muted); }
+  .nav-item:hover { background: var(--surface-2); color: var(--text); }
+  .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .nav-item.active .nav-icon { color: var(--primary); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .btn { transition: all .15s ease; font-weight: 500; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-ghost { background: transparent; color: var(--text-muted); }
+  .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+  .input, .select { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 14px; width: 100%; color: var(--text); transition: border-color .15s; }
+  .input:focus, .select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,.1); }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge-entrada { background: var(--success-soft); color: #10b981; }
+  .badge-salida { background: var(--danger-soft); color: #ef4444; }
+  .badge-transferencia { background: var(--info-soft); color: #0ea5e9; }
+  .modal-backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(4px); }
+  .modal { animation: modalIn .2s ease; }
+  @keyframes modalIn { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+  .table-row:hover { background: var(--surface-2); }
+  .scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  .dark .scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+  .kpi-card { position: relative; overflow: hidden; }
+  .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--primary), #8b5cf6); }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; font-size: 12px; background: var(--surface-2); color: var(--text); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .fade-in { animation: fadeIn .25s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--text-muted); }
+  .db-status { position: fixed; top: 20px; right: 20px; background: var(--success); color: white; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; z-index: 50; display: none; }
+  .autobackup-status { background: var(--surface-2); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--text); }
+  .autobackup-status.active { background: var(--success-soft); border-left: 3px solid var(--success); }
+  .autobackup-status.inactive { background: var(--warning-soft); border-left: 3px solid var(--warning); }
+  .pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+  .accordion-content.open { max-height: 500px; }
+  .tab-btn { padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+  .tab-btn:hover { background: var(--surface-2); color: var(--text); }
+  .tab-btn.active { background: var(--primary); color: white; }
+  .account-card { transition: transform 0.2s, box-shadow 0.2s; }
+  .account-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+  .month-block { transition: all 0.2s; cursor: pointer; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; border-radius: 6px; padding: 4px; min-height: 60px; }
+  .month-block:hover { transform: scale(1.05); z-index: 10; }
+  .month-block.current-month { box-shadow: 0 0 0 2px var(--primary), 0 0 10px rgba(79,70,229,0.4); z-index: 5; }
+  .dark .month-block.current-month { box-shadow: 0 0 0 2px var(--primary), 0 0 15px rgba(99,102,241,0.5); }
+  .trend-up { color: var(--success); }
+  .trend-down { color: var(--danger); }
+  .trend-flat { color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="flex h-screen overflow-hidden">
+  <aside class="sidebar w-64 flex flex-col flex-shrink-0">
+    <div class="p-5 border-b border-gray-200 dark:border-gray-700">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white font-bold text-lg">M</div>
+        <div>
+          <div class="font-bold text-sm dark:text-white">MOTO PARTES</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400">Gestor de Cuentas</div>
+        </div>
+      </div>
+    </div>
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto scrollbar">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pt-2 pb-1">Principal</div>
+      <button data-view="dashboard" class="nav-item active w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+        <svg class="nav-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg> Dashboard
+      </button>
+      <button data-view="movimientos" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+        <svg class="nav-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> Movimientos
+      </button>
+      <button data-view="cuadre" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+        <svg class="nav-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2a4 4 0 014-4h4M9 17H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-4"/></svg> Cuadre Mensual
+      </button>
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 pt-4 pb-1">Configuración</div>
+      <button data-view="cuentas" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+        <svg class="nav-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg> Cuentas
+      </button>
+      <button data-view="categorias" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm">
+        <svg class="nav-icon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg> Categorías
+      </button>
+    </nav>
+    <div class="p-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
+      <div class="autobackup-status active">
+        <div class="flex items-center justify-between mb-1">
+          <span class="font-semibold text-xs">💾 Autoguardado</span>
+          <span id="saveState" class="text-xs font-medium text-emerald-700 dark:text-emerald-400"><span class="pulse-dot"></span> Activo</span>
+        </div>
+        <div class="text-xs text-slate-600 dark:text-slate-400" id="saveInfo">Guardando automáticamente en tu PC</div>
+      </div>
+      <button onclick="manualSave()" class="btn btn-primary w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs">💾 Guardar ahora</button>
+      <button onclick="exportDbFile()" class="btn btn-ghost w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs">📤 Exportar BD (.db)</button>
+      <button onclick="document.getElementById('loadDbInput').click()" class="btn btn-ghost w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs">📥 Cargar BD (.db)</button>
+      <button onclick="exportAllDataJSON()" class="btn btn-ghost w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs">📋 Exportar Backup JSON</button>
+      <input type="file" id="loadDbInput" accept=".db" style="display:none" onchange="loadDbFromFile(event)">
+    </div>
+  </aside>
+
+  <main class="flex-1 overflow-y-auto scrollbar">
+    <header class="bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-gray-700 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
+          <img src="logo.png" alt="MOTO PARTES" class="h-12 w-auto object-contain" onerror="this.style.display='none'">
+          <div class="flex flex-col">
+            <h1 id="pageTitle" class="text-xl font-bold dark:text-white">Dashboard</h1>
+            <p id="pageSubtitle" class="text-sm text-slate-500 dark:text-slate-400">Resumen financiero general</p>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="toggleTheme()" class="btn btn-ghost p-2 rounded-lg" title="Cambiar tema">
+          <svg id="themeIconSun" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <svg id="themeIconMoon" class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        </button>
+      </div>
+    </header>
+    <div id="viewContainer" class="p-8 fade-in"></div>
+  </main>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toast" class="fixed bottom-6 right-6 z-50 hidden"></div>
+<div id="dbStatus" class="db-status">✓ BD guardada</div>
+
+<script>
+/* ============================================================
+   PUENTE CON SERVIDOR EXPRESS (Reemplazo web de PyWebView)
+   ============================================================ */
+if (!window.pywebview) {
+  window.pywebview = {
+    api: {
+      save_db: async function(data_base64) {
+        try {
+          const res = await fetch('/api/save-db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data_base64 })
+          });
+          return await res.json();
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
+      },
+      load_db: async function() {
+        try {
+          const res = await fetch('/api/load-db');
+          return await res.json();
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
+      },
+      has_db: async function() {
+        try {
+          const res = await fetch('/api/has-db');
+          const data = await res.json();
+          return !!data.has_db;
+        } catch (e) {
+          return false;
+        }
+      },
+      save_export: async function(filename, data_base64) {
+        try {
+          const res = await fetch('/api/save-export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, data_base64 })
+          });
+          return await res.json();
+        } catch (e) {
+          return { success: false, error: e.message };
+        }
+      }
+    }
+  };
+}
+
+/* ============================================================
+   TEMA OSCURO
+   ============================================================ */
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+}
+function toggleTheme() {
+  if (document.documentElement.classList.contains('dark')) {
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+  } else {
+    document.documentElement.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  }
+}
+initTheme();
+
+/* ============================================================
+   AUTO-GUARDADO Y AUTO-CARGA DE ARCHIVO .DB (PyWebView)
+   ============================================================ */
+function uint8ToBase64(uint8Array) {
+    let binary = '';
+    const len = uint8Array.byteLength;
+    for (let i = 0; i < len; i++) binary += String.fromCharCode(uint8Array[i]);
+    return btoa(binary);
+}
+
+function base64ToUint8(base64) {
+    const binary = atob(base64);
+    const len = binary.length;
+    const uint8 = new Uint8Array(len);
+    for (let i = 0; i < len; i++) uint8[i] = binary.charCodeAt(i);
+    return uint8;
+}
+
+async function autoSaveToFile() {
+    if (!db) return;
+    if (window.pywebview && window.pywebview.api) {
+        try {
+            const data = db.export();
+            const base64Data = uint8ToBase64(data);
+            const result = await window.pywebview.api.save_db(base64Data);
+            if (result.success) {
+                updateSaveStatus('Guardado: ' + new Date().toLocaleTimeString('es-ES'));
+            }
+        } catch (e) {
+            console.log('No se pudo autoguardar:', e);
+        }
+    }
+}
+
+async function autoLoadFromFile() {
+    if (window.pywebview && window.pywebview.api) {
+        try {
+            const hasDb = await window.pywebview.api.has_db();
+            if (hasDb) {
+                const result = await window.pywebview.api.load_db();
+                if (result.success) {
+                    return base64ToUint8(result.data);
+                }
+            }
+        } catch (e) {
+            console.log('No se pudo cargar desde archivo:', e);
+        }
+    }
+    return null;
+}
+
+function updateSaveStatus(msg) {
+    const el = document.getElementById('saveInfo');
+    if (el) el.textContent = msg;
+}
+
+let saveTimeout = null;
+function scheduleAutoSave() {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(autoSaveToFile, 2000);
+}
+
+async function manualSave() {
+    await autoSaveToFile();
+    toast('✓ BD guardada en tu PC');
+}
+
+/* ============================================================
+   EXPORTAR E IMPORTAR ARCHIVO .DB (para cambiar de PC)
+   ============================================================ */
+function exportDbFile() {
+    if (!db) return;
+    const data = db.export();
+    const filename = 'motopartes_backup_' + todayISO() + '.db';
+    
+    if (window.pywebview && window.pywebview.api) {
+        // Modo PyWebView: guardar via Python
+        const base64Data = uint8ToBase64(data);
+        window.pywebview.api.save_export(filename, base64Data).then(function(result) {
+            if (result.success) {
+                toast('BD exportada a: ' + result.path);
+            } else {
+                toast('Error al exportar: ' + result.error, 'error');
+            }
+        });
+    } else {
+        // Modo navegador: descarga normal
+        const blob = new Blob([data], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast('BD exportada');
+    }
+}
+
+function loadDbFromFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!confirm('Se reemplazarán los datos actuales con los del archivo seleccionado. ¿Continuar?')) {
+        event.target.value = '';
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const uint8Data = new Uint8Array(e.target.result);
+            db = new SQL.Database(uint8Data);
+            saveToIndexedDB();
+            renderView();
+            toast('BD cargada correctamente');
+        } catch (err) {
+            toast('Error: El archivo no es una BD válida', 'error');
+        }
+    };
+    reader.readAsArrayBuffer(file);
+    event.target.value = '';
+}
+
+/* ============================================================
+   SQLITE - INICIALIZACIÓN
+   ============================================================ */
+let db = null;
+let SQL = null;
+
+async function initDatabase() {
+  try {
+    SQL = await initSqlJs({ locateFile: file => `libs/${file}` });
+    
+    // 1. Intentar cargar desde archivo .db (PyWebView)
+    const fileData = await autoLoadFromFile();
+    if (fileData) {
+      db = new SQL.Database(fileData);
+      console.log('BD cargada desde archivo .db');
+    } else {
+      // 2. Intentar cargar desde IndexedDB (navegador normal)
+      const savedDb = await loadFromIndexedDB();
+      if (savedDb) {
+        db = new SQL.Database(savedDb);
+        console.log('BD cargada desde IndexedDB');
+      } else {
+        // 3. Crear BD nueva
+        db = new SQL.Database();
+        createSchema();
+        insertDefaultData();
+        console.log('BD nueva creada');
+      }
+    }
+    
+    ensureSettingsKeys();
+    renderView();
+  } catch (err) {
+    console.error('Error inicializando BD:', err);
+    toast('Error cargando base de datos', 'error');
+  }
+}
+
+function createSchema() {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT NOT NULL, currency TEXT NOT NULL, type TEXT NOT NULL, initialBalance REAL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS currencies (code TEXT PRIMARY KEY, symbol TEXT NOT NULL, name TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS movements (id TEXT PRIMARY KEY, date TEXT NOT NULL, type TEXT NOT NULL, accountId TEXT NOT NULL, destAccountId TEXT, amount REAL NOT NULL, destAmount REAL, rate REAL, categoryId TEXT, concept TEXT, doc TEXT);
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+  `);
+}
+
+function insertDefaultData() {
+  [['acc1','Cta. Bancaria Fiscal','CUP','Banco',0], ['acc2','Tarjeta Empresa CUP','CUP','Tarjeta',0], ['acc3','Tarjeta MLC','MLC','Tarjeta',0], ['acc4','Tarjeta USD','USD','Tarjeta',0], ['acc5','Tarjeta Personal #1','CUP','Personal',0], ['acc6','Tarjeta Personal #2','CUP','Personal',0], ['acc7','Fondo Compras','CUP','Caja',0]].forEach(a => db.run('INSERT INTO accounts VALUES (?,?,?,?,?)', a));
+  [['CUP','$','Peso Cubano'], ['USD','$','Dólar'], ['MLC','MLC','MLC'], ['EUR','€','Euro']].forEach(c => db.run('INSERT INTO currencies VALUES (?,?,?)', c));
+  [['cat1','Ventas','#10b981'], ['cat2','Compras','#f59e0b'], ['cat3','Nómina','#8b5cf6'], ['cat4','Impuestos','#ef4444'], ['cat5','Servicios','#0ea5e9'], ['cat6','Transferencia interna','#64748b']].forEach(c => db.run('INSERT INTO categories VALUES (?,?,?)', c));
+  saveToIndexedDB();
+}
+
+function ensureSettingsKeys() {
+  ['lastBackupTimestamp', 'lastBackupFilename'].forEach(k => {
+    const r = db.exec('SELECT value FROM settings WHERE key = ?', [k]);
+    if (!r.length || !r[0].values.length) db.run('INSERT INTO settings VALUES (?,?)', [k, '']);
+  });
+}
+
+/* ============================================================
+   PERSISTENCIA INDEXEDDB (para navegador normal)
+   ============================================================ */
+async function saveToIndexedDB() {
+  if (!db) return;
+  const data = db.export();
+  try {
+    const request = indexedDB.open('MIPYME_DB', 1);
+    request.onupgradeneeded = (event) => { const d = event.target.result; if (!d.objectStoreNames.contains('database')) d.createObjectStore('database'); };
+    request.onsuccess = (event) => {
+      const idb = event.target.result;
+      const tx = idb.transaction('database', 'readwrite');
+      tx.objectStore('database').put(data, 'main');
+      tx.oncomplete = () => showDbStatus();
+    };
+  } catch(e) { console.log('IndexedDB no disponible'); }
+  
+  // También guardar en archivo .db (PyWebView)
+  scheduleAutoSave();
+}
+
+async function loadFromIndexedDB() {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open('MIPYME_DB', 1);
+      request.onupgradeneeded = (event) => { const d = event.target.result; if (!d.objectStoreNames.contains('database')) d.createObjectStore('database'); };
+      request.onsuccess = (event) => {
+        const idb = event.target.result;
+        const tx = idb.transaction('database', 'readonly');
+        const req = tx.objectStore('database').get('main');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      };
+      request.onerror = () => resolve(null);
+    } catch(e) { resolve(null); }
+  });
+}
+
+function showDbStatus() {
+  const el = document.getElementById('dbStatus');
+  if (el) { el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 2000); }
+}
+
+/* ============================================================
+   QUERIES Y UTILIDADES
+   ============================================================ */
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+let currentView = 'dashboard';
+
+const ACCOUNT_COLORS = {
+  'acc1': '#4f46e5', 'acc2': '#3b82f6', 'acc3': '#10b981', 
+  'acc4': '#f59e0b', 'acc5': '#8b5cf6', 'acc6': '#ec4899', 'acc7': '#64748b'
+};
+
+function uid() { return 'id_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+function getAllAccounts() { const r = db.exec('SELECT * FROM accounts'); return r.length ? r[0].values.map(row => ({ id: row[0], name: row[1], currency: row[2], type: row[3], initialBalance: row[4] })) : []; }
+function getAllCurrencies() { const r = db.exec('SELECT * FROM currencies'); return r.length ? r[0].values.map(row => ({ code: row[0], symbol: row[1], name: row[2] })) : []; }
+function getAllCategories() { const r = db.exec('SELECT * FROM categories'); return r.length ? r[0].values.map(row => ({ id: row[0], name: row[1], color: row[2] })) : []; }
+function getAllMovements() { const r = db.exec('SELECT * FROM movements'); return r.length ? r[0].values.map(row => ({ id: row[0], date: row[1], type: row[2], accountId: row[3], destAccountId: row[4], amount: row[5], destAmount: row[6], rate: row[7], categoryId: row[8], concept: row[9], doc: row[10] })) : []; }
+function getAccount(id) { const r = db.exec('SELECT * FROM accounts WHERE id = ?', [id]); return r.length && r[0].values.length ? { id: r[0].values[0][0], name: r[0].values[0][1], currency: r[0].values[0][2], type: r[0].values[0][3], initialBalance: r[0].values[0][4] } : null; }
+function getCategory(id) { const r = db.exec('SELECT * FROM categories WHERE id = ?', [id]); return r.length && r[0].values.length ? { id: r[0].values[0][0], name: r[0].values[0][1], color: r[0].values[0][2] } : null; }
+
+function getLastUsedRate(currency) {
+    if (currency === 'CUP') return 1;
+    const movs = getAllMovements().filter(m => { const acc = getAccount(m.accountId); return acc && acc.currency === currency && m.rate && m.rate > 0; });
+    if (movs.length === 0) return 0;
+    movs.sort((a,b) => b.date.localeCompare(a.date));
+    return movs[0].rate;
+}
+
+function toCUP(amount, currency, date, rate) { return currency === 'CUP' ? amount : amount * (rate || getLastUsedRate(currency)); }
+function fmt(n, currency='CUP', decimals=2) {
+  if (n === null || n === undefined || isNaN(n)) n = 0;
+  const cur = getAllCurrencies().find(c => c.code === currency);
+  return `${cur ? cur.symbol : currency} ${Number(n).toLocaleString('es-ES', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : ''; }
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  const colors = { success: 'bg-emerald-500', error: 'bg-red-500', info: 'bg-indigo-500' };
+  el.innerHTML = `<div class="${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium">${msg}</div>`;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+/* ============================================================
+   CÁLCULOS
+   ============================================================ */
+function computeBalances() {
+  const accounts = getAllAccounts();
+  const balances = {};
+  accounts.forEach(a => balances[a.id] = a.initialBalance);
+  getAllMovements().sort((a,b) => a.date.localeCompare(b.date)).forEach(m => {
+    if (m.type === 'ENTRADA') balances[m.accountId] = (balances[m.accountId] || 0) + m.amount;
+    else if (m.type === 'SALIDA') balances[m.accountId] = (balances[m.accountId] || 0) - m.amount;
+    else if (m.type === 'TRANSFERENCIA') {
+      balances[m.accountId] = (balances[m.accountId] || 0) - m.amount;
+      if (m.destAccountId) balances[m.destAccountId] = (balances[m.destAccountId] || 0) + (m.destAmount || m.amount);
+    }
+  });
+  return balances;
+}
+
+function getMonthlyFlow() {
+  const accounts = getAllAccounts();
+  const year = new Date().getFullYear();
+  const flow = {};
+  accounts.forEach(a => {
+    flow[a.id] = {};
+    for (let i = 1; i <= 12; i++) flow[a.id][i] = { entradas: 0, salidas: 0, balance: 0 };
+  });
+  getAllMovements().sort((a,b) => a.date.localeCompare(b.date)).forEach(m => {
+    const d = new Date(m.date);
+    if (d.getFullYear() !== year) return;
+    const month = d.getMonth() + 1;
+    if (m.type === 'ENTRADA') flow[m.accountId][month].entradas += m.amount;
+    else if (m.type === 'SALIDA') flow[m.accountId][month].salidas += m.amount;
+    else if (m.type === 'TRANSFERENCIA') {
+      flow[m.accountId][month].salidas += m.amount;
+      if (m.destAccountId) flow[m.destAccountId][month].entradas += (m.destAmount || m.amount);
+    }
+  });
+  accounts.forEach(a => {
+    let running = a.initialBalance;
+    for (let i = 1; i <= 12; i++) {
+      running += flow[a.id][i].entradas - flow[a.id][i].salidas;
+      flow[a.id][i].balance = running;
+    }
+  });
+  return { flow, year };
+}
+
+function getFilteredMovements(period, typeFilter) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  let startDate, endDate;
+  if (period === 'month') { startDate = `${currentYear}-${String(currentMonth).padStart(2,'0')}-01`; endDate = `${currentYear}-${String(currentMonth).padStart(2,'0')}-31`; }
+  else if (period === 'quarter') { const q = Math.floor((currentMonth - 1) / 3) * 3 + 1; startDate = `${currentYear}-${String(q).padStart(2,'0')}-01`; endDate = `${currentYear}-${String(q + 2).padStart(2,'0')}-31`; }
+  else if (period === 'year') { startDate = `${currentYear}-01-01`; endDate = `${currentYear}-12-31`; }
+  else { startDate = '0000-01-01'; endDate = '9999-12-31'; }
+  return getAllMovements().filter(m => {
+    if (m.date < startDate || m.date > endDate) return false;
+    if (typeFilter !== 'all' && m.type !== typeFilter) return false;
+    return true;
+  });
+}
+
+function getPreviousPeriodMovements(period, typeFilter) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  let startDate, endDate;
+  if (period === 'month') {
+    const pm = currentMonth === 1 ? 12 : currentMonth - 1;
+    const py = currentMonth === 1 ? currentYear - 1 : currentYear;
+    startDate = `${py}-${String(pm).padStart(2,'0')}-01`; endDate = `${py}-${String(pm).padStart(2,'0')}-31`;
+  } else if (period === 'quarter') {
+    const q = Math.floor((currentMonth - 1) / 3) * 3 + 1;
+    const pq = q === 1 ? 10 : q - 3;
+    const py = q === 1 ? currentYear - 1 : currentYear;
+    startDate = `${py}-${String(pq).padStart(2,'0')}-01`; endDate = `${py}-${String(pq + 2).padStart(2,'0')}-31`;
+  } else if (period === 'year') { startDate = `${currentYear - 1}-01-01`; endDate = `${currentYear - 1}-12-31`; }
+  else { return []; }
+  return getAllMovements().filter(m => {
+    if (m.date < startDate || m.date > endDate) return false;
+    if (typeFilter !== 'all' && m.type !== typeFilter) return false;
+    return true;
+  });
+}
+
+/* ============================================================
+   NAVEGACIÓN
+   ============================================================ */
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentView = btn.dataset.view;
+    renderView();
+  });
+});
+
+const viewTitles = {
+  dashboard: ['Dashboard', 'Resumen por categorías y saldos'],
+  movimientos: ['Movimientos', 'Registro de entradas, salidas y transferencias'],
+  cuadre: ['Cuadre Mensual', 'Evolución mensual por cuenta'],
+  cuentas: ['Cuentas', 'Gestión de cuentas y monedas'],
+  categorias: ['Categorías', 'Clasificación de movimientos']
+};
+
+function renderView() {
+  const [title, subtitle] = viewTitles[currentView];
+  document.getElementById('pageTitle').textContent = title;
+  document.getElementById('pageSubtitle').textContent = subtitle;
+  const container = document.getElementById('viewContainer');
+  container.classList.remove('fade-in');
+  void container.offsetWidth;
+  container.classList.add('fade-in');
+  if (currentView === 'dashboard') renderDashboard();
+  else if (currentView === 'movimientos') renderMovimientos();
+  else if (currentView === 'cuadre') renderCuadre();
+  else if (currentView === 'cuentas') renderCuentas();
+  else if (currentView === 'categorias') renderCategorias();
+}
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+let dashFilters = { period: 'month', type: 'all', sort: 'amount' };
+
+function renderDashboard() {
+  const accounts = getAllAccounts();
+  const categories = getAllCategories();
+  const balances = computeBalances();
+  const movements = getFilteredMovements(dashFilters.period, dashFilters.type);
+  const prevMovements = getPreviousPeriodMovements(dashFilters.period, dashFilters.type);
+  
+  const catStats = {};
+  categories.forEach(c => { catStats[c.id] = { id: c.id, name: c.name, color: c.color, amounts: {}, count: 0, movements: [] }; });
+  
+  let totalAbsolute = 0;
+  movements.forEach(m => {
+    const catId = m.categoryId;
+    if (!catId || !catStats[catId]) return;
+    const acc = getAccount(m.accountId); if (!acc) return;
+    const curr = acc.currency;
+    if (!catStats[catId].amounts[curr]) catStats[catId].amounts[curr] = 0;
+    catStats[catId].amounts[curr] += Math.abs(m.amount);
+    catStats[catId].count++;
+    catStats[catId].movements.push(m);
+    totalAbsolute += Math.abs(toCUP(m.amount, curr, m.date, m.rate));
+  });
+  
+  const prevTotalByCat = {};
+  prevMovements.forEach(m => {
+    const catId = m.categoryId;
+    if (!catId || !catStats[catId]) return;
+    const acc = getAccount(m.accountId); if (!acc) return;
+    if (!prevTotalByCat[catId]) prevTotalByCat[catId] = 0;
+    prevTotalByCat[catId] += Math.abs(toCUP(m.amount, acc.currency, m.date, m.rate));
+  });
+  
+  Object.values(catStats).forEach(cs => {
+    const currentTotalCUP = Object.entries(cs.amounts).reduce((sum, [curr, amt]) => sum + (curr === 'CUP' ? amt : amt * (getLastUsedRate(curr) || 1)), 0);
+    cs.percent = totalAbsolute > 0 ? (currentTotalCUP / totalAbsolute) * 100 : 0;
+    const prevTotal = prevTotalByCat[cs.id] || 0;
+    cs.trend = prevTotal > 0 ? ((currentTotalCUP - prevTotal) / prevTotal) * 100 : (currentTotalCUP > 0 ? 100 : 0);
+    cs.movements.sort((a,b) => b.date.localeCompare(a.date));
+  });
+  
+  let sortedCats = Object.values(catStats);
+  if (dashFilters.sort === 'amount') sortedCats.sort((a,b) => Object.values(b.amounts).reduce((s,v)=>s+v,0) - Object.values(a.amounts).reduce((s,v)=>s+v,0));
+  else if (dashFilters.sort === 'alpha') sortedCats.sort((a,b) => a.name.localeCompare(b.name));
+  else if (dashFilters.sort === 'count') sortedCats.sort((a,b) => b.count - a.count);
+
+  const periodLabels = { month: 'Mes actual', quarter: 'Trimestre', year: 'Año', all: 'Todo el historial' };
+  
+  document.getElementById('viewContainer').innerHTML = `
+    <div class="card p-4 mb-6 flex flex-wrap items-center gap-4">
+      <div class="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+        <button onclick="setDashPeriod('month')" class="tab-btn ${dashFilters.period==='month'?'active':''}">Mes</button>
+        <button onclick="setDashPeriod('quarter')" class="tab-btn ${dashFilters.period==='quarter'?'active':''}">Trimestre</button>
+        <button onclick="setDashPeriod('year')" class="tab-btn ${dashFilters.period==='year'?'active':''}">Año</button>
+        <button onclick="setDashPeriod('all')" class="tab-btn ${dashFilters.period==='all'?'active':''}">Todo</button>
+      </div>
+      <select onchange="setDashType(this.value)" class="select !w-auto text-sm">
+        <option value="all" ${dashFilters.type==='all'?'selected':''}>Todos los tipos</option>
+        <option value="ENTRADA" ${dashFilters.type==='ENTRADA'?'selected':''}>Entradas</option>
+        <option value="SALIDA" ${dashFilters.type==='SALIDA'?'selected':''}>Salidas</option>
+        <option value="TRANSFERENCIA" ${dashFilters.type==='TRANSFERENCIA'?'selected':''}>Transferencias</option>
+      </select>
+      <select onchange="setDashSort(this.value)" class="select !w-auto text-sm">
+        <option value="amount" ${dashFilters.sort==='amount'?'selected':''}>Ordenar por Importe</option>
+        <option value="alpha" ${dashFilters.sort==='alpha'?'selected':''}>Ordenar Alfabético</option>
+        <option value="count" ${dashFilters.sort==='count'?'selected':''}>Ordenar por Cantidad</option>
+      </select>
+      <div class="ml-auto flex gap-2">
+        <button onclick="exportDashboardExcel()" class="btn btn-ghost px-3 py-2 rounded-lg text-sm flex items-center gap-1">📊 Excel</button>
+        <button onclick="exportDashboardPDF()" class="btn btn-ghost px-3 py-2 rounded-lg text-sm flex items-center gap-1">📄 PDF</button>
+      </div>
+    </div>
+
+    <h2 class="text-lg font-bold mb-3 dark:text-white">Saldos actuales por cuenta</h2>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
+      ${accounts.map(a => {
+        const bal = balances[a.id] || 0;
+        return `<div class="card p-4 kpi-card">
+          <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">${a.name}</div>
+          <div class="text-xl font-bold ${bal<0?'text-red-600':'text-slate-900 dark:text-white'}">${fmt(bal, a.currency)}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">${a.type} · ${a.currency}</div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <h2 class="text-lg font-bold mb-3 dark:text-white">Desglose por Categoría <span class="text-sm font-normal text-slate-500 dark:text-slate-400">(${periodLabels[dashFilters.period]})</span></h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${sortedCats.map(cs => {
+        const amountStr = Object.entries(cs.amounts).map(([curr, amt]) => fmt(amt, curr)).join(' | ');
+        const trendIcon = cs.trend > 0 ? '↑' : cs.trend < 0 ? '↓' : '→';
+        const trendColor = cs.trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : cs.trend < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500';
+        const last5 = cs.movements.slice(0, 5);
+        const hasMovements = cs.count > 0;
+        return `
+          <div class="card p-5 cursor-pointer hover:shadow-lg transition-shadow" onclick="toggleAccordion('acc-${cs.id}')">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style="background:${cs.color}">${cs.name.charAt(0).toUpperCase()}</div>
+                <div>
+                  <div class="font-bold text-base dark:text-white">${cs.name}</div>
+                  <div class="text-xs text-slate-500 dark:text-slate-400">${cs.count} movimiento${cs.count!==1?'s':''}</div>
+                </div>
+              </div>
+              <svg class="w-5 h-5 text-slate-400 transform transition-transform" id="arrow-${cs.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-slate-500 dark:text-slate-400">Importe total</span>
+                <span class="font-bold text-sm dark:text-white">${hasMovements ? amountStr : '—'}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-slate-500 dark:text-slate-400">% del total</span>
+                <span class="font-semibold text-sm dark:text-white">${hasMovements ? cs.percent.toFixed(1) + '%' : '0%'}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-xs text-slate-500 dark:text-slate-400">Tendencia</span>
+                <span class="font-semibold text-sm ${trendColor}">${hasMovements ? `${trendIcon} ${Math.abs(cs.trend).toFixed(1)}%` : '—'}</span>
+              </div>
+            </div>
+            ${!hasMovements ? '<div class="mt-3 text-xs text-slate-400 italic text-center py-2">Sin movimientos en este periodo</div>' : ''}
+            <div id="acc-${cs.id}" class="accordion-content mt-3 border-t border-gray-100 dark:border-gray-700 pt-3">
+              <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Últimos 5 movimientos</div>
+              ${last5.length === 0 ? '<div class="text-xs text-slate-400">Sin datos</div>' : 
+                last5.map(m => {
+                  const acc = getAccount(m.accountId);
+                  return `<div class="flex justify-between items-center py-1 text-xs border-b border-gray-50 dark:border-gray-800 last:border-0">
+                    <span class="text-slate-600 dark:text-slate-300">${fmtDate(m.date)}</span>
+                    <span class="font-medium dark:text-white">${fmt(m.amount, acc?.currency)}</span>
+                    <span class="text-slate-500 dark:text-slate-400 truncate max-w-[100px]">${m.concept || '—'}</span>
+                  </div>`;
+                }).join('')
+              }
+              ${hasMovements ? `<button onclick="event.stopPropagation(); openCategoryModal('${cs.id}')" class="mt-3 w-full btn btn-ghost text-xs py-1.5 rounded-lg">Ver todos los movimientos →</button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function setDashPeriod(p) { dashFilters.period = p; renderDashboard(); }
+function setDashType(t) { dashFilters.type = t; renderDashboard(); }
+function setDashSort(s) { dashFilters.sort = s; renderDashboard(); }
+
+function toggleAccordion(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById('arrow-' + id.replace('acc-', ''));
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    arrow.style.transform = 'rotate(0deg)';
+  } else {
+    document.querySelectorAll('.accordion-content.open').forEach(e => {
+      e.classList.remove('open');
+      const aid = e.id.replace('acc-', '');
+      const a = document.getElementById('arrow-' + aid);
+      if (a) a.style.transform = 'rotate(0deg)';
+    });
+    el.classList.add('open');
+    arrow.style.transform = 'rotate(180deg)';
+  }
+}
+
+function openCategoryModal(catId) {
+  const cat = getCategory(catId);
+  if (!cat) return;
+  const movements = getFilteredMovements(dashFilters.period, dashFilters.type).filter(m => m.categoryId === catId).sort((a,b) => b.date.localeCompare(a.date));
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="fixed inset-0 modal-backdrop z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+      <div class="modal bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold" style="background:${cat.color}">${cat.name.charAt(0).toUpperCase()}</div>
+            <h2 class="text-lg font-bold dark:text-white">${cat.name}</h2>
+          </div>
+          <button onclick="closeModal()" class="btn btn-ghost p-2 rounded-lg">✕</button>
+        </div>
+        <div class="p-6 overflow-y-auto flex-1">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 dark:bg-slate-700">
+              <tr class="text-left text-xs font-semibold text-slate-500 dark:text-slate-300 uppercase">
+                <th class="px-4 py-2">Fecha</th><th class="px-4 py-2 text-right">Importe</th><th class="px-4 py-2">Concepto</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${movements.length === 0 ? '<tr><td colspan="3" class="text-center py-8 text-slate-500">Sin movimientos</td></tr>' :
+                movements.map(m => {
+                  const acc = getAccount(m.accountId);
+                  return `<tr class="border-b border-gray-100 dark:border-gray-700">
+                    <td class="px-4 py-3 text-slate-600 dark:text-slate-300">${fmtDate(m.date)}</td>
+                    <td class="px-4 py-3 text-right font-semibold dark:text-white">${fmt(m.amount, acc?.currency)}</td>
+                    <td class="px-4 py-3 text-slate-600 dark:text-slate-300">${m.concept || '—'}</td>
+                  </tr>`;
+                }).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
+
+/* ============================================================
+   MOVIMIENTOS
+   ============================================================ */
+let movFilter = { search: '', type: 'all', account: 'all', category: 'all' };
+
+function renderMovimientos() {
+  const accounts = getAllAccounts();
+  const categories = getAllCategories();
+  const filtered = getAllMovements()
+    .filter(m => {
+      if (movFilter.type !== 'all' && m.type !== movFilter.type) return false;
+      if (movFilter.account !== 'all' && m.accountId !== movFilter.account) return false;
+      if (movFilter.category !== 'all' && m.categoryId !== movFilter.category) return false;
+      if (movFilter.search) { const s = movFilter.search.toLowerCase(); if (!(m.concept||'').toLowerCase().includes(s) && !(m.doc||'').toLowerCase().includes(s)) return false; }
+      return true;
+    }).sort((a,b) => b.date.localeCompare(a.date));
+
+  document.getElementById('viewContainer').innerHTML = `
+    <div class="card mb-4">
+      <div class="p-4 flex flex-wrap items-center gap-3">
+        <input type="text" placeholder="Buscar concepto o documento..." value="${movFilter.search}" oninput="movFilter.search=this.value;renderMovimientos()" class="input flex-1 min-w-[200px]">
+        <select onchange="movFilter.type=this.value;renderMovimientos()" class="select !w-auto">
+          <option value="all">Todos los tipos</option>
+          <option value="ENTRADA" ${movFilter.type==='ENTRADA'?'selected':''}>Entradas</option>
+          <option value="SALIDA" ${movFilter.type==='SALIDA'?'selected':''}>Salidas</option>
+          <option value="TRANSFERENCIA" ${movFilter.type==='TRANSFERENCIA'?'selected':''}>Transferencias</option>
+        </select>
+        <select onchange="movFilter.account=this.value;renderMovimientos()" class="select !w-auto">
+          <option value="all">Todas las cuentas</option>
+          ${accounts.map(a => `<option value="${a.id}" ${movFilter.account===a.id?'selected':''}>${a.name}</option>`).join('')}
+        </select>
+        <select onchange="movFilter.category=this.value;renderMovimientos()" class="select !w-auto">
+          <option value="all">Todas las categorías</option>
+          ${categories.map(c => `<option value="${c.id}" ${movFilter.category===c.id?'selected':''}>${c.name}</option>`).join('')}
+        </select>
+        <button onclick="openMovementModal()" class="btn btn-primary px-4 py-2 rounded-lg text-sm flex items-center gap-2">➕ Nuevo movimiento</button>
+        <button onclick="exportMovementsExcel()" class="btn btn-ghost px-3 py-2 rounded-lg text-sm">Excel</button>
+        <button onclick="exportMovementsPDF()" class="btn btn-ghost px-3 py-2 rounded-lg text-sm">PDF</button>
+      </div>
+    </div>
+    <div class="card overflow-hidden">
+      <div class="overflow-x-auto scrollbar">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 dark:bg-slate-700 border-b border-gray-200 dark:border-gray-600">
+            <tr class="text-left text-xs font-semibold text-slate-500 dark:text-slate-300 uppercase tracking-wider">
+              <th class="px-4 py-3">Fecha</th><th class="px-4 py-3">Tipo</th><th class="px-4 py-3">Cuenta</th>
+              <th class="px-4 py-3 text-right">Importe</th><th class="px-4 py-3">Categoría</th><th class="px-4 py-3">Concepto</th><th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.length === 0 ? `<tr><td colspan="7" class="empty-state py-12"><div class="font-medium mt-2">Sin movimientos</div></td></tr>` :
+              filtered.map(m => {
+                const acc = getAccount(m.accountId);
+                const cat = m.categoryId ? getCategory(m.categoryId) : null;
+                return `<tr class="table-row border-b border-gray-100 dark:border-gray-700">
+                  <td class="px-4 py-3 text-slate-600 dark:text-slate-300">${fmtDate(m.date)}</td>
+                  <td class="px-4 py-3"><span class="badge badge-${m.type.toLowerCase()}">${m.type}</span></td>
+                  <td class="px-4 py-3"><div class="font-medium dark:text-white">${acc?.name || '—'}</div><div class="text-xs text-slate-500">${acc?.currency || ''}</div></td>
+                  <td class="px-4 py-3 text-right font-semibold ${m.type==='ENTRADA'?'text-emerald-600':m.type==='SALIDA'?'text-red-600':'text-slate-700 dark:text-slate-300'}">${m.type==='ENTRADA'?'+':m.type==='SALIDA'?'-':'↔'} ${fmt(m.amount, acc?.currency)}</td>
+                  <td class="px-4 py-3">${cat ? `<span class="chip"><span class="dot" style="background:${cat.color}"></span>${cat.name}</span>` : '<span class="text-slate-400">—</span>'}</td>
+                  <td class="px-4 py-3 text-slate-600 dark:text-slate-300 max-w-xs truncate">${m.concept || '—'}</td>
+                  <td class="px-4 py-3 text-right">
+                    <button onclick="openMovementModal('${m.id}')" class="btn btn-ghost p-1.5 rounded">✏️</button>
+                    <button onclick="deleteMovement('${m.id}')" class="btn btn-ghost p-1.5 rounded text-red-500">🗑️</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openMovementModal(id=null) {
+  const accounts = getAllAccounts();
+  const categories = getAllCategories();
+  const movements = getAllMovements();
+  const m = id ? movements.find(x => x.id === id) : null;
+  const isEdit = !!m;
+  const data = m || { id: null, date: todayISO(), type: 'ENTRADA', accountId: accounts[0]?.id, destAccountId: '', amount: 0, destAmount: 0, rate: 0, categoryId: '', concept: '', doc: '' };
+  const acc = getAccount(data.accountId);
+  
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="fixed inset-0 modal-backdrop z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+      <div class="modal bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-800 z-10">
+          <h2 class="text-lg font-bold dark:text-white">${isEdit ? 'Editar' : 'Nuevo'} movimiento</h2>
+          <button onclick="closeModal()" class="btn btn-ghost p-2 rounded-lg">✕</button>
+        </div>
+        <form id="movForm" class="p-6 space-y-4" onsubmit="saveMovement(event, ${isEdit ? `'${data.id}'` : 'null'})">
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Fecha</label><input type="date" name="date" value="${data.date}" required class="input"></div>
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Tipo</label>
+              <select name="type" id="movType" onchange="onMovTypeChange()" required class="select">
+                <option value="ENTRADA" ${data.type==='ENTRADA'?'selected':''}>Entrada</option>
+                <option value="SALIDA" ${data.type==='SALIDA'?'selected':''}>Salida</option>
+                <option value="TRANSFERENCIA" ${data.type==='TRANSFERENCIA'?'selected':''}>Transferencia</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Cuenta</label>
+              <select name="accountId" id="movAccount" onchange="onMovAccountChange()" required class="select">
+                ${accounts.map(a => `<option value="${a.id}" ${data.accountId===a.id?'selected':''}>${a.name} (${a.currency})</option>`).join('')}
+              </select>
+            </div>
+            <div id="destAccountWrap" style="display:${data.type==='TRANSFERENCIA'?'block':'none'}">
+              <label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Cuenta destino</label>
+              <select name="destAccountId" id="movDestAccount" class="select">
+                <option value="">—</option>
+                ${accounts.filter(a => a.id !== data.accountId).map(a => `<option value="${a.id}" ${data.destAccountId===a.id?'selected':''}>${a.name} (${a.currency})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Importe origen</label><input type="number" step="0.01" name="amount" id="movAmount" value="${data.amount}" oninput="calcDestAmount()" required class="input"></div>
+            <div id="destAmountWrap" style="display:${data.type==='TRANSFERENCIA'?'block':'none'}">
+              <label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Importe destino</label>
+              <input type="number" step="0.01" name="destAmount" id="movDestAmount" value="${data.destAmount || data.amount}" class="input">
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-4">
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Moneda</label><input type="text" id="movCurrency" value="${acc?.currency || 'CUP'}" readonly class="input bg-slate-50 dark:bg-slate-700"></div>
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Tasa cambio</label><input type="number" step="0.0001" name="rate" id="movRate" value="${data.rate || ''}" placeholder="Auto" class="input"></div>
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Equiv. CUP</label><input type="text" id="movEquivCUP" readonly class="input bg-slate-50 dark:bg-slate-700"></div>
+          </div>
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Categoría</label>
+            <select name="categoryId" class="select">
+              <option value="">— Sin categoría —</option>
+              ${categories.map(c => `<option value="${c.id}" ${data.categoryId===c.id?'selected':''}>${c.name}</option>`).join('')}
+            </select>
+          </div>
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Concepto</label><input type="text" name="concept" value="${data.concept || ''}" class="input"></div>
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">No. Documento</label><input type="text" name="doc" value="${data.doc || ''}" class="input"></div>
+          <div class="flex justify-end gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <button type="button" onclick="closeModal()" class="btn btn-ghost px-4 py-2 rounded-lg">Cancelar</button>
+            <button type="submit" class="btn btn-primary px-5 py-2 rounded-lg">${isEdit ? 'Guardar cambios' : 'Registrar'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  setTimeout(() => {
+    calcDestAmount();
+    if (!isEdit) {
+        const currentAcc = getAccount(document.getElementById('movAccount').value);
+        const rateInput = document.getElementById('movRate');
+        if (currentAcc && currentAcc.currency !== 'CUP' && !rateInput.value) {
+            const lastRate = getLastUsedRate(currentAcc.currency);
+            if (lastRate > 0) { rateInput.value = lastRate; calcDestAmount(); }
+        }
+    }
+  }, 50);
+}
+
+function onMovTypeChange() {
+  const type = document.getElementById('movType').value;
+  document.getElementById('destAccountWrap').style.display = type === 'TRANSFERENCIA' ? 'block' : 'none';
+  document.getElementById('destAmountWrap').style.display = type === 'TRANSFERENCIA' ? 'block' : 'none';
+  if (type === 'TRANSFERENCIA') {
+    const accId = document.getElementById('movAccount').value;
+    document.getElementById('movDestAccount').innerHTML = '<option value="">—</option>' + getAllAccounts().filter(a => a.id !== accId).map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('');
+  }
+}
+function onMovAccountChange() {
+  const acc = getAccount(document.getElementById('movAccount').value);
+  document.getElementById('movCurrency').value = acc?.currency || 'CUP';
+  onMovTypeChange();
+  const rateInput = document.getElementById('movRate');
+  if (acc && acc.currency !== 'CUP' && !rateInput.value) {
+      const lastRate = getLastUsedRate(acc.currency);
+      if (lastRate > 0) rateInput.value = lastRate;
+  }
+  calcDestAmount();
+}
+function calcDestAmount() {
+  const amount = parseFloat(document.getElementById('movAmount').value) || 0;
+  const acc = getAccount(document.getElementById('movAccount').value);
+  const date = document.querySelector('input[name="date"]').value;
+  const rateInput = document.getElementById('movRate');
+  let rate = parseFloat(rateInput.value);
+  if (!rate && acc?.currency !== 'CUP') { rate = getLastUsedRate(acc.currency); if (rate) rateInput.value = rate; }
+  document.getElementById('movEquivCUP').value = fmt(toCUP(amount, acc?.currency || 'CUP', date, rate || null));
+  if (document.getElementById('movType').value === 'TRANSFERENCIA') {
+    const destAcc = getAccount(document.getElementById('movDestAccount').value);
+    if (destAcc && acc && destAcc.currency === acc.currency) document.getElementById('movDestAmount').value = amount;
+  }
+}
+function saveMovement(e, id) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const data = {
+    id: id || uid(), date: f.get('date'), type: f.get('type'), accountId: f.get('accountId'),
+    destAccountId: f.get('destAccountId') || null, amount: parseFloat(f.get('amount')) || 0,
+    destAmount: parseFloat(f.get('destAmount')) || 0, rate: parseFloat(f.get('rate')) || null,
+    categoryId: f.get('categoryId') || null, concept: f.get('concept') || '', doc: f.get('doc') || ''
+  };
+  if (data.type === 'TRANSFERENCIA' && !data.destAccountId) { toast('Selecciona cuenta destino', 'error'); return; }
+  if (id) {
+    db.run('UPDATE movements SET date=?, type=?, accountId=?, destAccountId=?, amount=?, destAmount=?, rate=?, categoryId=?, concept=?, doc=? WHERE id=?',
+      [data.date, data.type, data.accountId, data.destAccountId, data.amount, data.destAmount, data.rate, data.categoryId, data.concept, data.doc, data.id]);
+    toast('Movimiento actualizado');
+  } else {
+    db.run('INSERT INTO movements VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      [data.id, data.date, data.type, data.accountId, data.destAccountId, data.amount, data.destAmount, data.rate, data.categoryId, data.concept, data.doc]);
+    toast('Movimiento registrado');
+  }
+  saveToIndexedDB(); closeModal(); renderView();
+}
+function deleteMovement(id) {
+  if (!confirm('¿Eliminar este movimiento?')) return;
+  db.run('DELETE FROM movements WHERE id = ?', [id]);
+  saveToIndexedDB(); toast('Movimiento eliminado'); renderView();
+}
+
+/* ============================================================
+   CUADRE MENSUAL
+   ============================================================ */
+function renderCuadre() {
+  const accounts = getAllAccounts();
+  const balances = computeBalances();
+  const { flow, year } = getMonthlyFlow();
+  const currentMonth = new Date().getMonth() + 1;
+
+  let totalCUP = 0;
+  const monthlyTotals = { entradas: Array(13).fill(0), salidas: Array(13).fill(0) };
+  accounts.forEach(a => {
+    totalCUP += toCUP(balances[a.id] || 0, a.currency, todayISO());
+    for (let i = 1; i <= 12; i++) {
+      monthlyTotals.entradas[i] += toCUP(flow[a.id][i].entradas, a.currency, `${year}-${String(i).padStart(2,'0')}-01`);
+      monthlyTotals.salidas[i] += toCUP(flow[a.id][i].salidas, a.currency, `${year}-${String(i).padStart(2,'0')}-01`);
+    }
+  });
+
+  let maxInMonth = 1, maxInVal = 0, maxOutMonth = 1, maxOutVal = 0;
+  for (let i = 1; i <= 12; i++) {
+    if (monthlyTotals.entradas[i] > maxInVal) { maxInVal = monthlyTotals.entradas[i]; maxInMonth = i; }
+    if (monthlyTotals.salidas[i] > maxOutVal) { maxOutVal = monthlyTotals.salidas[i]; maxOutMonth = i; }
+  }
+
+  let maxBalance = 1;
+  accounts.forEach(a => {
+    for (let i = 1; i <= 12; i++) {
+      if (Math.abs(flow[a.id][i].balance) > maxBalance) maxBalance = Math.abs(flow[a.id][i].balance);
+    }
+  });
+
+  document.getElementById('viewContainer').innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="card p-5 kpi-card">
+        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Patrimonio Total (CUP)</div>
+        <div class="text-2xl font-bold mt-2 text-indigo-600 dark:text-indigo-400">${fmt(totalCUP)}</div>
+        <div class="text-xs text-slate-500 mt-1">Saldo actual consolidado</div>
+      </div>
+      <div class="card p-5 kpi-card">
+        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mes con Mayor Entrada</div>
+        <div class="text-2xl font-bold mt-2 text-emerald-600 dark:text-emerald-400">${MONTHS[maxInMonth-1]}</div>
+        <div class="text-xs text-slate-500 mt-1">${fmt(maxInVal)}</div>
+      </div>
+      <div class="card p-5 kpi-card">
+        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mes con Mayor Salida</div>
+        <div class="text-2xl font-bold mt-2 text-red-600 dark:text-red-400">${MONTHS[maxOutMonth-1]}</div>
+        <div class="text-xs text-slate-500 mt-1">${fmt(maxOutVal)}</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      ${accounts.map(a => {
+        const color = ACCOUNT_COLORS[a.id] || '#64748b';
+        const currentBal = balances[a.id] || 0;
+        const prevBal = flow[a.id][currentMonth > 1 ? currentMonth - 1 : 12].balance;
+        const trend = currentBal - prevBal;
+        const trendPct = prevBal !== 0 ? ((trend / Math.abs(prevBal)) * 100).toFixed(1) : 0;
+        const trendIcon = trend > 0 ? '↑' : trend < 0 ? '↓' : '→';
+        const trendClass = trend > 0 ? 'trend-up' : trend < 0 ? 'trend-down' : 'trend-flat';
+        return `
+          <div class="card account-card p-5" style="border-left: 4px solid ${color}">
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <h3 class="font-bold text-lg dark:text-white">${a.name}</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">${a.type} · ${a.currency}</p>
+              </div>
+              <div class="text-right">
+                <div class="text-xl font-bold dark:text-white">${fmt(currentBal, a.currency)}</div>
+                <div class="text-xs ${trendClass} font-medium flex items-center justify-end gap-1">
+                  <span>${trendIcon} ${Math.abs(trendPct)}%</span>
+                  <span class="text-slate-400">vs mes ant.</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-end justify-between gap-1 h-24 mb-2 px-1">
+              ${Array.from({length: 12}, (_, i) => {
+                const month = i + 1;
+                const bal = flow[a.id][month].balance;
+                const height = Math.max(10, Math.min(100, (Math.abs(bal) / maxBalance) * 100));
+                const isCurrent = month === currentMonth;
+                const isPositive = bal >= 0;
+                const bgOpacity = 0.2 + (height / 100) * 0.6;
+                const bgColor = isPositive ? `rgba(16, 185, 129, ${bgOpacity})` : `rgba(239, 68, 68, ${bgOpacity})`;
+                return `
+                  <div class="month-block flex-1 ${isCurrent ? 'current-month' : ''}" 
+                       style="height: ${height}%; background-color: ${bgColor}; border: 1px solid ${isPositive ? '#10b981' : '#ef4444'};"
+                       onclick="openMonthMovementsModal('${a.id}', ${year}, ${month})"
+                       title="${MONTHS[i]}: ${fmt(bal, a.currency)}">
+                    <span class="text-[10px] font-bold dark:text-white mb-1">${fmt(bal, a.currency, 0)}</span>
+                    <span class="text-[9px] text-slate-500 dark:text-slate-400">${MONTHS_SHORT[i]}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div class="text-[10px] text-center text-slate-400 mt-1">Click en un mes para ver detalles</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="card overflow-hidden">
+      <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+        <h3 class="font-bold text-sm dark:text-white">Resumen Global Mensual (Equiv. CUP)</h3>
+      </div>
+      <div class="overflow-x-auto scrollbar">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 dark:bg-slate-700">
+            <tr class="text-left text-xs font-semibold text-slate-500 dark:text-slate-300 uppercase">
+              <th class="px-4 py-3 sticky left-0 bg-slate-50 dark:bg-slate-700">Concepto</th>
+              ${MONTHS.map(m => `<th class="px-3 py-3 text-right min-w-[80px]">${m.slice(0,3)}</th>`).join('')}
+              <th class="px-4 py-3 text-right bg-indigo-50 dark:bg-indigo-900 min-w-[100px]">Total Año</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-gray-100 dark:border-gray-700">
+              <td class="px-4 py-3 font-medium sticky left-0 bg-white dark:bg-slate-800 dark:text-white">Entradas</td>
+              ${monthlyTotals.entradas.slice(1).map((v, i) => `<td class="px-3 py-3 text-right text-emerald-600 dark:text-emerald-400 font-medium">${fmt(v)}</td>`).join('')}
+              <td class="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 bg-indigo-50 dark:bg-indigo-900">${fmt(monthlyTotals.entradas.slice(1).reduce((a,b)=>a+b,0))}</td>
+            </tr>
+            <tr class="border-b border-gray-100 dark:border-gray-700">
+              <td class="px-4 py-3 font-medium sticky left-0 bg-white dark:bg-slate-800 dark:text-white">Salidas</td>
+              ${monthlyTotals.salidas.slice(1).map((v, i) => `<td class="px-3 py-3 text-right text-red-600 dark:text-red-400 font-medium">${fmt(v)}</td>`).join('')}
+              <td class="px-4 py-3 text-right font-bold text-red-600 dark:text-red-400 bg-indigo-50 dark:bg-indigo-900">${fmt(monthlyTotals.salidas.slice(1).reduce((a,b)=>a+b,0))}</td>
+            </tr>
+            <tr class="bg-slate-50 dark:bg-slate-700/50">
+              <td class="px-4 py-3 font-bold sticky left-0 bg-slate-50 dark:bg-slate-700/50 dark:text-white">Resultado Neto</td>
+              ${monthlyTotals.entradas.slice(1).map((v, i) => {
+                const net = v - monthlyTotals.salidas[i+1];
+                return `<td class="px-3 py-3 text-right font-bold ${net>=0?'text-emerald-600 dark:text-emerald-400':'text-red-600 dark:text-red-400'}">${fmt(net)}</td>`;
+              }).join('')}
+              <td class="px-4 py-3 text-right font-bold bg-indigo-50 dark:bg-indigo-900 dark:text-white">${fmt(monthlyTotals.entradas.slice(1).reduce((a,b)=>a+b,0) - monthlyTotals.salidas.slice(1).reduce((a,b)=>a+b,0))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openMonthMovementsModal(accountId, year, month) {
+  const acc = getAccount(accountId);
+  if (!acc) return;
+  const movements = getAllMovements().filter(m => {
+    const d = new Date(m.date);
+    return m.accountId === accountId && d.getFullYear() === year && (d.getMonth() + 1) === month;
+  }).sort((a,b) => b.date.localeCompare(a.date));
+  const monthName = MONTHS[month-1];
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="fixed inset-0 modal-backdrop z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+      <div class="modal bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold dark:text-white">${acc.name}</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Movimientos de ${monthName} ${year}</p>
+          </div>
+          <button onclick="closeModal()" class="btn btn-ghost p-2 rounded-lg">✕</button>
+        </div>
+        <div class="p-6 overflow-y-auto flex-1">
+          ${movements.length === 0 ? '<div class="text-center py-12 text-slate-500 dark:text-slate-400">Sin movimientos en este mes</div>' :
+            `<table class="w-full text-sm">
+              <thead class="bg-slate-50 dark:bg-slate-700 sticky top-0">
+                <tr class="text-left text-xs font-semibold text-slate-500 dark:text-slate-300 uppercase">
+                  <th class="px-4 py-2">Fecha</th><th class="px-4 py-2">Tipo</th><th class="px-4 py-2 text-right">Importe</th><th class="px-4 py-2">Concepto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${movements.map(m => `
+                  <tr class="border-b border-gray-100 dark:border-gray-700 table-row">
+                    <td class="px-4 py-3 text-slate-600 dark:text-slate-300">${fmtDate(m.date)}</td>
+                    <td class="px-4 py-3"><span class="badge badge-${m.type.toLowerCase()}">${m.type}</span></td>
+                    <td class="px-4 py-3 text-right font-semibold dark:text-white">${fmt(m.amount, acc.currency)}</td>
+                    <td class="px-4 py-3 text-slate-600 dark:text-slate-300">${m.concept || '—'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   CUENTAS Y CATEGORÍAS
+   ============================================================ */
+function renderCuentas() {
+  const accounts = getAllAccounts();
+  const currencies = getAllCurrencies();
+  const balances = computeBalances();
+  document.getElementById('viewContainer').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="text-sm text-slate-600 dark:text-slate-400">${accounts.length} cuentas · ${currencies.length} monedas</div>
+      <div class="flex gap-2">
+        <button onclick="openCurrencyModal()" class="btn btn-ghost px-4 py-2 rounded-lg text-sm">+ Moneda</button>
+        <button onclick="openAccountModal()" class="btn btn-primary px-4 py-2 rounded-lg text-sm">+ Cuenta</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      ${accounts.map(a => {
+        const bal = balances[a.id] || 0;
+        return `<div class="card p-5">
+          <div class="flex items-start justify-between mb-3">
+            <div><div class="font-semibold dark:text-white">${a.name}</div><div class="text-xs text-slate-500">${a.type} · ${a.currency}</div></div>
+            <div class="flex gap-1">
+              <button onclick="openAccountModal('${a.id}')" class="btn btn-ghost p-1.5 rounded">✏️</button>
+              <button onclick="deleteAccount('${a.id}')" class="btn btn-ghost p-1.5 rounded text-red-500">🗑️</button>
+            </div>
+          </div>
+          <div class="text-2xl font-bold ${bal<0?'text-red-600':'text-slate-900 dark:text-white'}">${fmt(bal, a.currency)}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="card">
+      <div class="p-4 border-b border-gray-200 dark:border-gray-700"><h3 class="font-semibold dark:text-white">Monedas</h3></div>
+      <div class="divide-y divide-gray-100 dark:divide-gray-700">
+        ${currencies.map(c => `<div class="p-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300">${c.symbol}</div>
+            <div><div class="font-medium dark:text-white">${c.name}</div><div class="text-xs text-slate-500">${c.code}</div></div>
+          </div>
+          <div class="flex gap-1">
+            <button onclick="openCurrencyModal('${c.code}')" class="btn btn-ghost p-1.5 rounded">✏️</button>
+            ${c.code !== 'CUP' ? `<button onclick="deleteCurrency('${c.code}')" class="btn btn-ghost p-1.5 rounded text-red-500">🗑️</button>` : ''}
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function openAccountModal(id=null) {
+  const a = id ? getAccount(id) : null;
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="fixed inset-0 modal-backdrop z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+      <div class="modal bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700"><h2 class="text-lg font-bold dark:text-white">${a ? 'Editar' : 'Nueva'} cuenta</h2></div>
+        <form onsubmit="saveAccount(event, ${a ? `'${a.id}'` : 'null'})" class="p-6 space-y-4">
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Nombre</label><input type="text" name="name" value="${a?.name || ''}" required class="input"></div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Moneda</label><select name="currency" required class="select">${getAllCurrencies().map(c => `<option value="${c.code}" ${a?.currency===c.code?'selected':''}>${c.code}</option>`).join('')}</select></div>
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Tipo</label><select name="type" class="select">${['Banco','Tarjeta','Caja','Personal','Otro'].map(t => `<option ${a?.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+          </div>
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Saldo inicial</label><input type="number" step="0.01" name="initialBalance" value="${a?.initialBalance || 0}" class="input"></div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" class="btn btn-ghost px-4 py-2 rounded-lg">Cancelar</button>
+            <button type="submit" class="btn btn-primary px-5 py-2 rounded-lg">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+function saveAccount(e, id) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const data = { id: id || uid(), name: f.get('name'), currency: f.get('currency'), type: f.get('type'), initialBalance: parseFloat(f.get('initialBalance')) || 0 };
+  if (id) { db.run('UPDATE accounts SET name=?, currency=?, type=?, initialBalance=? WHERE id=?', [data.name, data.currency, data.type, data.initialBalance, data.id]); toast('Cuenta actualizada'); }
+  else { db.run('INSERT INTO accounts VALUES (?,?,?,?,?)', [data.id, data.name, data.currency, data.type, data.initialBalance]); toast('Cuenta creada'); }
+  saveToIndexedDB(); closeModal(); renderView();
+}
+function deleteAccount(id) {
+  if (getAllMovements().some(m => m.accountId === id || m.destAccountId === id)) { toast('Tiene movimientos asociados', 'error'); return; }
+  if (!confirm('¿Eliminar esta cuenta?')) return;
+  db.run('DELETE FROM accounts WHERE id = ?', [id]);
+  saveToIndexedDB(); toast('Cuenta eliminada'); renderView();
+}
+
+function openCurrencyModal(code=null) {
+  const c = code ? getAllCurrencies().find(x => x.code === code) : null;
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="fixed inset-0 modal-backdrop z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+      <div class="modal bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700"><h2 class="text-lg font-bold dark:text-white">${c ? 'Editar' : 'Nueva'} moneda</h2></div>
+        <form onsubmit="saveCurrency(event, ${c ? `'${c.code}'` : 'null'})" class="p-6 space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Código</label><input type="text" name="code" value="${c?.code || ''}" maxlength="5" required class="input uppercase"></div>
+            <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Símbolo</label><input type="text" name="symbol" value="${c?.symbol || ''}" maxlength="3" required class="input"></div>
+          </div>
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Nombre</label><input type="text" name="name" value="${c?.name || ''}" required class="input"></div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" class="btn btn-ghost px-4 py-2 rounded-lg">Cancelar</button>
+            <button type="submit" class="btn btn-primary px-5 py-2 rounded-lg">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+function saveCurrency(e, code) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const data = { code: f.get('code').toUpperCase(), symbol: f.get('symbol'), name: f.get('name') };
+  if (code) {
+    const oldCode = code;
+    db.run('UPDATE currencies SET symbol=?, name=? WHERE code=?', [data.symbol, data.name, data.code]);
+    if (oldCode !== data.code) db.run('UPDATE accounts SET currency=? WHERE currency=?', [data.code, oldCode]);
+    toast('Moneda actualizada');
+  } else {
+    if (getAllCurrencies().find(c => c.code === data.code)) { toast('Ya existe', 'error'); return; }
+    db.run('INSERT INTO currencies VALUES (?,?,?)', [data.code, data.symbol, data.name]);
+    toast('Moneda creada');
+  }
+  saveToIndexedDB(); closeModal(); renderView();
+}
+function deleteCurrency(code) {
+  if (getAllAccounts().some(a => a.currency === code)) { toast('Hay cuentas usándola', 'error'); return; }
+  if (!confirm('¿Eliminar?')) return;
+  db.run('DELETE FROM currencies WHERE code = ?', [code]);
+  saveToIndexedDB(); renderView();
+}
+
+function renderCategorias() {
+  const categories = getAllCategories();
+  const movements = getAllMovements();
+  document.getElementById('viewContainer').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <div class="text-sm text-slate-600 dark:text-slate-400">${categories.length} categorías</div>
+      <button onclick="openCategoryForm()" class="btn btn-primary px-4 py-2 rounded-lg text-sm">+ Categoría</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${categories.map(c => {
+        const count = movements.filter(m => m.categoryId === c.id).length;
+        return `<div class="card p-5 flex items-center gap-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold" style="background:${c.color}">${c.name.charAt(0).toUpperCase()}</div>
+          <div class="flex-1"><div class="font-semibold dark:text-white">${c.name}</div><div class="text-xs text-slate-500">${count} movimiento(s)</div></div>
+          <div class="flex gap-1">
+            <button onclick="openCategoryForm('${c.id}')" class="btn btn-ghost p-1.5 rounded">✏️</button>
+            <button onclick="deleteCategory('${c.id}')" class="btn btn-ghost p-1.5 rounded text-red-500">🗑️</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+function openCategoryForm(id=null) {
+  const c = id ? getCategory(id) : null;
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="fixed inset-0 modal-backdrop z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+      <div class="modal bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-700"><h2 class="text-lg font-bold dark:text-white">${c ? 'Editar' : 'Nueva'} categoría</h2></div>
+        <form onsubmit="saveCategory(event, ${c ? `'${c.id}'` : 'null'})" class="p-6 space-y-4">
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Nombre</label><input type="text" name="name" value="${c?.name || ''}" required class="input"></div>
+          <div><label class="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 block">Color</label><input type="color" name="color" value="${c?.color || '#4f46e5'}" class="w-full h-10 rounded-lg cursor-pointer"></div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" class="btn btn-ghost px-4 py-2 rounded-lg">Cancelar</button>
+            <button type="submit" class="btn btn-primary px-5 py-2 rounded-lg">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+function saveCategory(e, id) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const data = { id: id || uid(), name: f.get('name'), color: f.get('color') };
+  if (id) { db.run('UPDATE categories SET name=?, color=? WHERE id=?', [data.name, data.color, data.id]); toast('Categoría actualizada'); }
+  else { db.run('INSERT INTO categories VALUES (?,?,?)', [data.id, data.name, data.color]); toast('Categoría creada'); }
+  saveToIndexedDB(); closeModal(); renderView();
+}
+function deleteCategory(id) {
+  if (getAllMovements().some(m => m.categoryId === id)) {
+    if (!confirm('Se desasociarán los movimientos. ¿Continuar?')) return;
+    db.run('UPDATE movements SET categoryId=NULL WHERE categoryId=?', [id]);
+  }
+  db.run('DELETE FROM categories WHERE id = ?', [id]);
+  saveToIndexedDB(); toast('Categoría eliminada'); renderView();
+}
+
+/* ============================================================
+   EXPORTACIONES (compatible con PyWebView y navegador)
+   ============================================================ */
+function saveExportFile(filename, uint8Data) {
+    if (window.pywebview && window.pywebview.api) {
+        const base64Data = uint8ToBase64(uint8Data);
+        window.pywebview.api.save_export(filename, base64Data).then(function(result) {
+            if (result.success) {
+                toast('Exportado a: ' + result.path);
+            } else {
+                toast('Error: ' + result.error, 'error');
+            }
+        });
+    } else {
+        const blob = new Blob([uint8Data], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast('Exportado: ' + filename);
+    }
+}
+
+function exportDashboardExcel() {
+  const accounts = getAllAccounts();
+  const balances = computeBalances();
+  const categories = getAllCategories();
+  const movements = getFilteredMovements(dashFilters.period, dashFilters.type);
+  const catStats = {};
+  categories.forEach(c => catStats[c.id] = { name: c.name, amounts: {}, count: 0 });
+  let totalAbs = 0;
+  movements.forEach(m => {
+    const catId = m.categoryId; if (!catId || !catStats[catId]) return;
+    const acc = getAccount(m.accountId); if (!acc) return;
+    if (!catStats[catId].amounts[acc.currency]) catStats[catId].amounts[acc.currency] = 0;
+    catStats[catId].amounts[acc.currency] += Math.abs(m.amount);
+    catStats[catId].count++;
+    totalAbs += Math.abs(toCUP(m.amount, acc.currency, m.date, m.rate));
+  });
+  
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accounts.map(a => ({ Cuenta: a.name, Moneda: a.currency, Saldo: balances[a.id] || 0 }))), 'Saldos');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(catStats).map(cs => {
+    const row = { Categoria: cs.name, Movimientos: cs.count };
+    Object.entries(cs.amounts).forEach(([curr, amt]) => row['Importe ' + curr] = amt);
+    const totalCUP = Object.entries(cs.amounts).reduce((s, [c, v]) => s + (c==='CUP'?v:v*(getLastUsedRate(c)||1)), 0);
+    row['% del Total'] = totalAbs > 0 ? (totalCUP/totalAbs)*100 : 0;
+    return row;
+  })), 'Categorias');
+  
+  const filename = 'dashboard_motopartes_' + todayISO() + '.xlsx';
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  saveExportFile(filename, new Uint8Array(wbout));
+}
+
+function exportDashboardPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const accounts = getAllAccounts();
+  const balances = computeBalances();
+  const categories = getAllCategories();
+  const movements = getFilteredMovements(dashFilters.period, dashFilters.type);
+  doc.setFontSize(16); doc.text('MOTO PARTES - Dashboard', 14, 15);
+  doc.setFontSize(10); doc.text('Generado: ' + new Date().toLocaleString('es-ES'), 14, 22);
+  doc.setFontSize(12); doc.text('Saldos por Cuenta', 14, 32);
+  doc.autoTable({ startY: 36, head: [['Cuenta','Moneda','Saldo']], body: accounts.map(a => [a.name, a.currency, fmt(balances[a.id]||0, a.currency)]), styles: { fontSize: 9 }, headStyles: { fillColor: [79,70,229] } });
+  const catStats = {};
+  categories.forEach(c => catStats[c.id] = { name: c.name, amounts: {}, count: 0 });
+  let totalAbs = 0;
+  movements.forEach(m => {
+    const catId = m.categoryId; if (!catId || !catStats[catId]) return;
+    const acc = getAccount(m.accountId); if (!acc) return;
+    if (!catStats[catId].amounts[acc.currency]) catStats[catId].amounts[acc.currency] = 0;
+    catStats[catId].amounts[acc.currency] += Math.abs(m.amount);
+    catStats[catId].count++;
+    totalAbs += Math.abs(toCUP(m.amount, acc.currency, m.date, m.rate));
+  });
+  let y = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(12); doc.text('Desglose por Categoria', 14, y);
+  doc.autoTable({ startY: y+4, head: [['Categoria','Mov.','Importe','% Total']], body: Object.values(catStats).map(cs => {
+    const amtStr = Object.entries(cs.amounts).map(([c,v]) => fmt(v,c)).join(' | ');
+    const totalCUP = Object.entries(cs.amounts).reduce((s, [c, v]) => s + (c==='CUP'?v:v*(getLastUsedRate(c)||1)), 0);
+    return [cs.name, cs.count, amtStr, (totalAbs > 0 ? (totalCUP/totalAbs)*100 : 0).toFixed(1)+'%'];
+  }), styles: { fontSize: 9 }, headStyles: { fillColor: [79,70,229] } });
+  
+  const filename = 'dashboard_motopartes_' + todayISO() + '.pdf';
+  const pdfData = doc.output('arraybuffer');
+  saveExportFile(filename, new Uint8Array(pdfData));
+}
+
+function exportMovementsExcel() {
+  const filtered = getAllMovements().sort((a,b) => a.date.localeCompare(b.date));
+  const rows = filtered.map(m => {
+    const acc = getAccount(m.accountId);
+    const cat = m.categoryId ? getCategory(m.categoryId) : null;
+    return { Fecha: m.date, Tipo: m.type, Cuenta: acc?.name||'', Moneda: acc?.currency||'', Importe: m.amount, 'Equiv CUP': toCUP(m.amount, acc?.currency, m.date, m.rate), Categoria: cat?.name||'', Concepto: m.concept||'' };
+  });
+  
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
+  
+  const filename = 'movimientos_' + todayISO() + '.xlsx';
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  saveExportFile(filename, new Uint8Array(wbout));
+}
+
+function exportMovementsPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(14); doc.text('Movimientos MOTO PARTES', 14, 15);
+  const filtered = getAllMovements().sort((a,b) => a.date.localeCompare(b.date));
+  doc.autoTable({ startY: 22, head: [['Fecha','Tipo','Cuenta','Importe','Categoria','Concepto']], body: filtered.map(m => {
+    const acc = getAccount(m.accountId);
+    const cat = m.categoryId ? getCategory(m.categoryId) : null;
+    return [m.date, m.type, acc?.name||'', fmt(m.amount, acc?.currency), cat?.name||'', (m.concept||'').slice(0,30)];
+  }), styles: { fontSize: 8 }, headStyles: { fillColor: [79,70,229] } });
+  
+  const filename = 'movimientos_' + todayISO() + '.pdf';
+  const pdfData = doc.output('arraybuffer');
+  saveExportFile(filename, new Uint8Array(pdfData));
+}
+
+function exportAllDataJSON() {
+  const data = { accounts: getAllAccounts(), currencies: getAllCurrencies(), categories: getAllCategories(), movements: getAllMovements() };
+  const jsonStr = JSON.stringify(data, null, 2);
+  const filename = 'motopartes_backup_' + todayISO() + '.json';
+  
+  const encoder = new TextEncoder();
+  const uint8Data = encoder.encode(jsonStr);
+  saveExportFile(filename, uint8Data);
+}
+
+/* ============================================================
+   INICIAR LA APP
+   ============================================================ */
+/* ============================================================
+   INICIAR LA APP (esperando a que PyWebView esté listo)
+   ============================================================ */
+if (window.pywebview) {
+    // Ya está disponible (cargó rápido)
+    initDatabase();
+} else {
+    // Esperar a que PyWebView inyecte su API
+    window.addEventListener('pywebviewready', function() {
+        console.log('PyWebView listo, cargando BD...');
+        initDatabase();
+    });
+    // Fallback: si después de 5 segundos no está, cargar sin API (modo navegador)
+    setTimeout(function() {
+        if (!window.pywebview) {
+            console.log('Modo navegador: cargando sin PyWebView');
+            initDatabase();
+        }
+    }, 5000);
+}
+</script>
+</body>
+</html>
